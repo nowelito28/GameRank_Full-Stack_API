@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # Name of the Kubernetes Service resource
+  name: {{ include "gamerank.name" (default .Chart.Name .Values.service.name) }}
+
+  # Namespace where the Helm release is installed
+  # This comes from the helm install/upgrade -n ... command
+  namespace: {{ .Release.Namespace }}
+
+spec:
+  selector:
+    # This selector must match the labels of the Pods created by the Deployment
+    # The Service forwards traffic only to Pods with this label
+    app: {{ include "gamerank.name" . }}
+
+  ports:
+    # List of ports that the Service exposes
+    {{- range .Values.service.ports }}
+    {{- include "gamerank.service.port" . | nindent 4 }}
+    {{- end }}
+
+  # ClusterIP exposes the Service only inside the Kubernetes cluster
+  # External access is handled through the Ingress
+  type: {{ .Values.service.type }}

@@ -1,0 +1,7 @@
+apiVersion: v2
+appVersion: "1.0"
+description: A Helm chart to deploy the Django app GameRank
+name: gamerank
+version: 1.0.4
+type: application
+icon: https://static.djangoproject.com/img/logos/django-logo-positive.svg

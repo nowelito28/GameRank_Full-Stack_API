@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  # Name of the Kubernetes Ingress resource
+  name:
+    {{ include "gamerank.name" (default .Chart.Name .Values.ingress.name) }}
+
+  # Namespace where the Helm release is installed (my-namespace)
+  # -> helm install my-app ./chart -n my-namespace
+  namespace: {{ .Release.Namespace }}
+
+  annotations:
+    # Tells the NGINX Ingress controller to overwrite the incoming path to "/"
+    # In this case, requests arriving at "/" are forwarded to the backend root path
+    nginx.ingress.kubernetes.io/rewrite-target:
+      {{ .Values.ingress.annotations.rewriteTarget | quote }}
+
+spec:
+  # Ingress class that should handle this resource
+  # Here, the chart uses the NGINX Ingress controller
+  ingressClassName: {{ .Values.ingress.spec.className }}
+
+  rules:
+    {{- range .Values.ingress.spec.rules }}
+    # (dict "rule" . "context" $) -> creates a map with the current rule and the context ($)
+    {{- include "gamerank.ingress.rule" (dict "rule" . "context" $) | nindent 4 }}
+    {{- end }}

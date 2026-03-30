@@ -1,0 +1,278 @@
+name: Deploy to Local Minikube with Helm Chart
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  fork:
+  workflow_dispatch:
+jobs:
+  deploy-helm:
+    # Corre en cualquier servidor propio/local indiferentemente del SO:
+    runs-on: self-hosted 
+    # Usamos bash para todos los pasos (macOS, Linux y Windows con Git Bash instalado)
+    # Requisito en Windows: tener Git for Windows -> https://git-scm.com/download/win
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false  # Evita que Git busque submódulos fantasmas
+          clean: false       # Evita que Git borre tus logs o archivos del runner (como tunnel.log)
+      - name: Check and Install Required Tools (macOS / Linux)
+        if: runner.os == 'macOS' || runner.os == 'Linux'
+        run: |
+          set -e
+
+          # Ensure curl
+          if command -v curl >/dev/null 2>&1; then
+            echo "curl is installed:"
+            curl --version | head -n 1
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            echo "curl not found, installing curl..."
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y curl
+            elif command -v dnf >/dev/null 2>&1; then
+              sudo dnf install -y curl
+            elif command -v yum >/dev/null 2>&1; then
+              sudo yum install -y curl
+            else
+              echo "No supported package manager found to install curl."
+              exit 1
+            fi
+          else
+            echo "curl is not installed on this macOS runner."
+            exit 1
+          fi
+
+          # Check Docker
+          if command -v docker >/dev/null 2>&1; then
+            echo "Docker is installed:"
+            docker --version
+          else
+            echo "Docker is not installed on this $RUNNER_OS runner."
+            echo "Install Docker manually on the runner before using this workflow."
+            exit 1
+          fi
+
+          # Install Helm if needed
+          if command -v helm >/dev/null 2>&1; then
+            echo "Helm is already installed:"
+            helm version --short
+          else
+            echo "Helm not found, installing Helm..."
+            curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+            helm version --short
+          fi
+
+          # Install kubectl if needed
+          if command -v kubectl >/dev/null 2>&1; then
+            echo "kubectl is already installed:"
+            kubectl version --client=true --output=yaml | head -n 20
+          else
+            echo "kubectl not found, installing kubectl..."
+
+            if [ "$RUNNER_OS" = "macOS" ]; then
+              KUBECTL_OS="darwin"
+            else
+              KUBECTL_OS="linux"
+            fi
+
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${KUBECTL_OS}/amd64/kubectl"
+            chmod +x kubectl
+            sudo mv kubectl /usr/local/bin/
+            kubectl version --client=true
+          fi
+
+          # Install Minikube if needed
+          if command -v minikube >/dev/null 2>&1; then
+            echo "Minikube is already installed:"
+            minikube version
+          else
+            echo "Minikube not found, installing Minikube..."
+
+            if [ "$RUNNER_OS" = "macOS" ]; then
+              MINIKUBE_BIN="minikube-darwin-amd64"
+            else
+              MINIKUBE_BIN="minikube-linux-amd64"
+            fi
+
+            curl -LO "https://storage.googleapis.com/minikube/releases/latest/${MINIKUBE_BIN}"
+            sudo install "${MINIKUBE_BIN}" /usr/local/bin/minikube
+            minikube version
+          fi
+      - name: Install Git for Windows (if needed)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
+            Write-Host "Git Bash not found, installing Git for Windows..."
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+              winget install --id Git.Git -e --silent
+            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+              choco install git -y
+            } else {
+              Write-Error "winget nor choco found. Install Git for Windows manually in the runner."
+              exit 1
+            }
+            # Añadir Git al PATH persistente entre steps usando el mecanismo oficial de GitHub Actions:
+            # ($env:PATH solo vive en este proceso, $GITHUB_PATH persiste para todos los steps siguientes)
+            $gitBin = "C:\Program Files\Git\bin"
+            $gitCmd = "C:\Program Files\Git\cmd"
+            Add-Content -Path $env:GITHUB_PATH -Value $gitBin
+            Add-Content -Path $env:GITHUB_PATH -Value $gitCmd
+            Write-Host "Git for Windows installed and added to GITHUB_PATH."
+          } else {
+            Write-Host "Git Bash already install, continuing..."
+          }
+      - name: Start Docker and Minikube
+        run: |
+          # En macOS abre la interfaz gráfica de Docker Desktop si está cerrada:
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            open -a Docker
+          fi
+          
+          # Esperando a que Docker esté listo...
+          while ! docker system info > /dev/null 2>&1; do sleep 2; done
+          
+          # Docker listo, arrancando Minikube si no está encendido...
+          minikube status || minikube start
+      - name: Install Helm (macOS / Linux if needed)
+        if: runner.os == 'macOS' || runner.os == 'Linux'
+        run: |
+          # Check whether Helm is already installed
+          if command -v helm >/dev/null 2>&1; then
+            echo "Helm is already installed:"
+            helm version --short
+
+          else
+            echo "Helm not found, installing Helm..."
+            # Official Helm 3 install script
+            curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+            echo "Helm installed successfully:"
+            helm version --short
+          fi
+      - name: Install Helm (Windows if needed)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Check whether Helm is already installed
+          if (Get-Command helm -ErrorAction SilentlyContinue) {
+            Write-Host "Helm is already installed:"
+            helm version --short
+          } else {
+            Write-Host "Helm not found, installing Helm..."
+
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+              winget install --id Helm.Helm -e --silent
+            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+              choco install kubernetes-helm -y
+            } else {
+              Write-Error "Neither winget nor choco was found. Install Helm manually on the runner."
+              exit 1
+            }
+
+            Write-Host "Helm installed successfully:"
+            helm version --short
+          }
+      - name: GameRank Namespace
+        run: |
+          # Crea el namespace 'gamerank-ns' de forma segura primero haciendo un .yaml en memoria del namespace: apply -> si no existe lo crea, si ya existe no hace nada
+          kubectl create namespace gamerank-ns --dry-run=client -o yaml | kubectl apply -f -
+
+          # Cambia el contexto actual al namespace 'gamerank-ns'
+          kubectl config set-context --current --namespace=gamerank-ns
+      - name: Build Docker Image
+        run: |
+          # Construye la imagen de docker de la app -> Dockerfile (path a este fichero al final)
+          docker build -t nowelito28/gamerank:latest .
+      - name: Load Image into Minikube
+        run: |
+          # Carga la imagen de docker en minikube:
+          minikube image load nowelito28/gamerank:latest
+
+          # Lista las imagenes de docker en minikube:
+          minikube image ls
+      - name: Enable Minikube Ingress Addon
+        run: |
+          # Habilita el addon ingress de minikube para que el servicio sea accesible desde fuera del cluster(url) mediante el ingress:
+          minikube addons enable ingress || true
+      - name: Lint Helm Chart
+        run: |
+          # Lint/Validación del helm chart:
+          helm lint ./chart_helm
+
+      - name: Render Helm Templates
+        run: |
+          # Renderizado de los templates del helm chart -> deployment, service and ingress (en el espacio de nombres gamerank-ns, aunque ya este ese por defecto y no haga falta indicarlo):
+          helm template gamerank ./chart_helm -n gamerank-ns
+      - name: Start Minikube Tunnel (macOS / Linux)
+        if: runner.os == 'macOS' || runner.os == 'Linux'
+        run: |
+          # Matando túneles antiguos por si acaso...
+          echo "${{ secrets.PASS }}" | sudo -S pkill -f "minikube tunnel" || true
+
+          # El tunnel corre en segundo plano y redirige la salida al fichero tunnel.log
+          echo "${{ secrets.PASS }}" | sudo -S nohup minikube tunnel > tunnel.log 2>&1 &
+      - name: Start Minikube Tunnel (Windows)
+        if: runner.os == 'Windows'
+        # Usamos PowerShell aquí porque gsudo es nativo de Windows, no de bash
+        shell: pwsh
+        env:
+          # gsudo lee esta variable de entorno para elevar privilegios sin prompt interactivo
+          GSUDO_CREDENTIALS_PASSWORD: ${{ secrets.W_PASS }}
+        run: |
+          # Instala gsudo si no está disponible:
+          if (-not (Get-Command gsudo -ErrorAction SilentlyContinue)) {
+            # winget funciona en Windows 10 21H2+. Si no existe, usamos Chocolatey como fallback:
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+              winget install --id gerardog.gsudo -e --silent
+            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+              choco install gsudo -y
+            } else {
+              Write-Error "No se encontró winget ni choco para instalar gsudo. Instálalo manualmente en el runner."
+              exit 1
+            }
+          }
+
+          # Matando túneles antiguos por si acaso...
+          gsudo --no-auth-if-already-elevated taskkill /F /IM minikube.exe 2>$null || $true
+
+          # El tunnel corre en segundo plano con Start-Job.
+          # Pasamos la contraseña explícitamente al ScriptBlock porque los env vars del step padre no se heredan en runspaces separados:
+          $pass = $env:GSUDO_CREDENTIALS_PASSWORD
+          Start-Job -ScriptBlock {
+            $env:GSUDO_CREDENTIALS_PASSWORD = $using:pass
+            gsudo minikube tunnel *> tunnel.log
+          }
+      - name: Deploy to Minikube with Helm
+        run: |
+          # Aplica el deployment, servicio e ingress de la imagen de docker:
+          helm upgrade --install gamerank ./chart_helm --namespace gamerank-ns --create-namespace -f ./chart_helm/values.yaml
+      - name: Validation
+        run: |
+          # Esperando que la aplicación esté lista de forma dinámica...
+          kubectl rollout status deployment/gamerank-deployment --timeout=90s
+
+          # Obtener la IP del host
+          kubectl get nodes -o wide
+
+          # Obtener los pods de la imagen de docker
+          kubectl get pods -n gamerank-ns
+
+          # Obtener el deployment de la imagen de docker
+          kubectl get deployment -n gamerank-ns
+
+          # Obtener el servicio de la imagen de docker
+          kubectl get svc -n gamerank-ns
+
+          # Obtener el ingress de la imagen de docker
+          kubectl get ingress -n gamerank-ns
+      - name: Show App URL
+        run: |
+          # Url de la app:
+          echo "URL to the deployed app (main page): http://$(kubectl get ingress gamerank-ingress -n gamerank-ns -o jsonpath='{.spec.rules[0].host}')"

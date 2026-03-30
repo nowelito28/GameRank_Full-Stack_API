@@ -1,0 +1,131 @@
+---
+# Source: gamerank/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  # Name of the Kubernetes Service resource
+  name: gamerank-service
+
+  # Namespace where the Helm release is installed
+  # This comes from the helm install/upgrade -n ... command
+  namespace: gamerank-ns
+
+spec:
+  selector:
+    # This selector must match the labels of the Pods created by the Deployment
+    # The Service forwards traffic only to Pods with this label
+    app: gamerank
+
+  ports:
+    # List of ports that the Service exposes
+    # Protocol to use for the Service
+    - protocol: TCP
+      # Port exposed by the Service inside the cluster (outside the Pod/container) -> connected to the ingress
+      port: 8080
+      # Port where the container is actually listening inside the Pod/container
+      targetPort: 8000
+
+  # ClusterIP exposes the Service only inside the Kubernetes cluster
+  # External access is handled through the Ingress
+  type: ClusterIP
+---
+# Source: gamerank/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # Name of the Kubernetes Deployment resource
+  name: gamerank-deployment
+  # Namespace where the helm chart will be installed/deployed (helm install my-app ./chart -n my-namespace) if not specified -> default namespace
+  # Release name (my-namespace) -> helm install my-app ./chart -n my-namespace
+  namespace: gamerank-ns
+  labels:
+    # app name (gamerank) -> deployment name in values.yaml
+    app: gamerank
+    # chart name and version (gamerank-1.0.4) -> chartname-version
+    chart: gamerank-1.0.4
+    # release name (my-app) -> helm install my-app ./chart
+    release: gamerank-release
+    # helm release service (helm) -> helm install my-app ./chart
+    heritage: Helm
+spec:
+  # Number of pod replicas for the Deployment
+  replicas: 1
+  # Selector to match the pod template
+  selector:
+    matchLabels:
+      # app name (gamerank)
+      app: gamerank
+  # Pod template
+  template:
+    metadata:
+      labels:
+        # app name (gamerank) -> template app name
+        app: gamerank
+    spec:
+      # Pod containers:
+      # Display all containers defined in values.yaml -> .Values.deployment.containers
+      containers:
+        # Container name
+        - name: gamerank-django
+          # Docker image configuration
+          # quote: adds quotes ("") around the image name ("result")
+          image: "nowelito28/gamerank:latest"
+          # Image pull policy
+          imagePullPolicy: IfNotPresent
+          # Container ports
+          ports:
+            # Port that Django listens on inside the container
+            - containerPort: 8000
+          # Environment variables
+          # Resource limits for the container (cpu and memory)
+          resources:
+            limits:
+              cpu: 250m
+              memory: 128Mi
+            requests:
+              cpu: 125m
+              memory: 64Mi
+---
+# Source: gamerank/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  # Name of the Kubernetes Ingress resource
+  name:
+    gamerank-ingress
+
+  # Namespace where the Helm release is installed (my-namespace)
+  # -> helm install my-app ./chart -n my-namespace
+  namespace: gamerank-ns
+
+  annotations:
+    # Tells the NGINX Ingress controller to overwrite the incoming path to "/"
+    # In this case, requests arriving at "/" are forwarded to the backend root path
+    nginx.ingress.kubernetes.io/rewrite-target:
+      "/"
+
+spec:
+  # Ingress class that should handle this resource
+  # Here, the chart uses the NGINX Ingress controller
+  ingressClassName: nginx
+
+  rules:
+    # (dict "rule" . "context" $) -> creates a map with the current rule and the context ($)
+    # Host that the Ingress should handle
+    - host: gamerank.127.0.0.1.nip.io
+      http:
+        paths:
+          # Path that the Ingress should handle
+          - path: /
+            # Prefix means that any request path starting with "/" matches this rule
+            pathType: Prefix
+            # Backend configuration
+            backend:
+              service:
+                # This does NOT point to the Pod or the containerPort
+                # It points to the Kubernetes Service
+                name: gamerank-service
+                port:
+                  # This must be the Service "port"
+                  # Not the Deployment containerPort
+                  number: 8080

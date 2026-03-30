@@ -1,0 +1,78 @@
+# Default values for the GameRank Helm chart
+# You can override the settings fields here.
+
+deployment:
+  # Name of the Deployment object
+  name: gamerank-deployment
+  # Number of pod replicas for the Deployment
+  replicaCount: 1
+  # For diferent containers
+  containers:
+    - name: gamerank-django
+      # Resource requests and limits for the container
+      resources:
+        limits:
+          cpu: "250m"   # Maximum CPU (0.25 CPU cores)
+          memory: "128Mi" # Maximum memory
+        requests:
+          cpu: "125m"   # Minimum guaranteed CPU
+          memory: "64Mi" # Minimum guaranteed memory
+      # Docker image configuration
+      image:
+        # Repository name (Docker Hub username/repo)
+        repository: nowelito28/gamerank
+        # Image tag (version)
+        tag: latest
+        # Image pull policy
+        pullPolicy: IfNotPresent
+      # Container port that Django listens on inside the pod
+      containerPort: 8000
+      
+      # Environment variables array syntax (uncomment to apply)
+      # env:
+      # Django settings module (usually "project_name.settings")
+      # Adjust if your settings module has a different path.
+      #   - name: DJANGO_SETTINGS_MODULE
+      #     value: "GameRank.settings"
+      # Database connection URL (PostgreSQL example)
+      # Format: postgres://user:password@host:port/dbname
+      # Replace with your actual credentials and host.
+      #   - name: DATABASE_URL
+      #     value: "postgres://user:password@postgres:5432/gamerank"
+
+
+service:
+  # Name of the Service object
+  name: gamerank-service
+  # Type of the Service
+  type: ClusterIP
+  ports:
+    # Protocol to use for the Service
+    - protocol: TCP
+      # Port that the Service exposes outside the container
+      # Connected to the ingress
+      port: 8080
+      # Target port that the Container is listening on
+      targetPort: 8000
+
+  
+ingress:
+  # Name of the Ingress object
+  name: gamerank-ingress
+  # Annotations for the Ingress
+  annotations:
+    # Rewrite target for the Ingress
+    rewriteTarget: /
+  spec:
+    # Ingress class name (nginx, traefik, etc.)
+    className: nginx
+    rules:
+      - host: gamerank.127.0.0.1.nip.io
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              # If left empty, it will default to the generic chart name
+              serviceName: gamerank-service 
+              # The specific port of the Service to route this traffic to outside the container (cluster port) -> port: number: 8080
+              servicePort: 8080

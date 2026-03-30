@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # Name of the Kubernetes Deployment resource
+  name: {{ include "gamerank.name" (default .Chart.Name .Values.deployment.name) }}
+  # Namespace where the helm chart will be installed/deployed (helm install my-app ./chart -n my-namespace) if not specified -> default namespace
+  # Release name (my-namespace) -> helm install my-app ./chart -n my-namespace
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gamerank.deployment.labels" . | nindent 4 }}
+spec:
+  # Number of pod replicas for the Deployment
+  replicas: {{ .Values.deployment.replicaCount }}
+  # Selector to match the pod template
+  selector:
+    matchLabels:
+      # app name (gamerank)
+      app: {{ include "gamerank.name" . }}
+  # Pod template
+  template:
+    metadata:
+      labels:
+        # app name (gamerank) -> template app name
+        app: {{ include "gamerank.name" . }}
+    spec:
+      # Pod containers:
+      # Display all containers defined in values.yaml -> .Values.deployment.containers
+      containers:
+        {{- range .Values.deployment.containers }}
+        {{- include "gamerank.deployment.container" . | nindent 8 }}
+        {{- end }}
