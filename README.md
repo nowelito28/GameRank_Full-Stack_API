@@ -2,8 +2,8 @@
 
 GameRank is a full-stack web application built with Django for exploring, rating, and commenting on videogames. It aggregates data from multiple external sources (XML and public JSON APIs) and allows users to interact with games by posting reviews, voting on comments, and customizing their experience.
 
-> 🌐 **Live demo:** [https://noelito.pythonanywhere.com/](https://noelito.pythonanywhere.com/)  
-> 🕒 \*Available until **August 2025\***
+> 🌐 **Previous live demo:** [https://noelito.pythonanywhere.com/](https://noelito.pythonanywhere.com/)  
+> 🕒 Historical deployment used during the academic project
 
 ---
 
@@ -37,10 +37,10 @@ GameRank is a full-stack web application built with Django for exploring, rating
 
 ## 🖥️ Deployment (Online)
 
-The project is deployed and available at:
+Historical public deployment:
 
 🔗 [https://noelito.pythonanywhere.com/](https://noelito.pythonanywhere.com/)  
-🗓️ Valid until August 2025  
+🗓️ Availability depended on the PythonAnywhere academic environment  
 🔐 Default credentials (for demo purposes):
 
 ### 🔐 Users Credentials
@@ -77,18 +77,15 @@ The project is deployed and available at:
 
 ```bash
 # Clone the repository
-git clone [https://github.com/nowelito28/Middleware-Java_based-.git](https://github.com/nowelito28/Middleware-Java_based-.git)
-cd Middleware-Java_based-  # or the real repo name
+git clone [https://github.com/nowelito28/GameRank_Full-Stack_API.git](https://github.com/nowelito28/GameRank_Full-Stack_API.git)
+cd GameRank_Full-Stack_API  # or the real repo name
 
 # Create and activate virtual environment
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install project dependencies
-pip install -r GameRank/requirements.txt
-
-# Navigate to Django project folder
-cd GameRank
+pip install -r requirements.txt
 
 # Apply migrations
 python3 manage.py migrate
@@ -100,262 +97,155 @@ python3 manage.py createsuperuser
 python3 manage.py runserver
 ```
 
-## 🐳 Deployment (Docker & Kubernetes / Minikube)
+## 🐳 Local Deployment with Helm, Minikube(Kubernetes-kubectl), Docker and GitHub Actions
 
-You can also run GameRank locally in a containerized Kubernetes cluster using **Minikube** and the official Docker image.
+The current local deployment flow is based on:
 
-### 📋 Prerequisites
+- a Docker image built by the workflow
+- a local Minikube cluster
+- a Helm chart located in `chart_helm/`
+- a self-hosted GitHub Actions runner with the label `gamerank-runner`
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or any container runtime)
+The old manual guide based on `kubectl create deployment`, `kubectl expose`, and handwritten ingress manifests is obsolete for this repository state.
+
+### 📋 Runtime Requirements
+
+The self-hosted runner machine must be prepared before the workflow runs.
+
+#### Common requirements
+
 - [Minikube](https://minikube.sigs.k8s.io/docs/start/)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- enough permissions to start Minikube and create Kubernetes resources
+- internet access to install missing tools such as `helm`, `kubectl`, `curl`, (and `gsudo` or Git for Windows when required)
 
-### 🔐 Users Credentials
+#### macOS
 
-- **Admin Panel**: `noelito / 123`
-- **Regular Users**: `gonza / gonzagonza14`, `lucia / lucialucia12`
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- `sudo` access
+- GitHub Actions runner registered with labels `self-hosted` and `gamerank-runner`
+- repository secret `PASS`
 
-### 🛠️ Cluster Setup & Execution
+#### Linux
 
-**1. Start Minikube and enable the Ingress addon:**
+- Docker installed and startable through the local service manager
+- `sudo` access
+- GitHub Actions runner registered with labels `self-hosted` and `gamerank-runner`
+- repository secret `PASS`
 
-```bash
-minikube start
-minikube addons enable ingress
-```
+#### Windows
 
-**2. Create a dedicated namespace and set it as default (optional):**
-
-```bash
-kubectl create namespace gamerank-ns
-kubectl config set-context --current --namespace=gamerank-ns
-```
-
-**3. Deploy the application from Docker Hub:**
-
-```bash
-# We use the explicitly tagged version to ensure stability (latest)
-kubectl create deployment gamerank-deploy --image=nowelito28/gamerank:1.0.4
-```
-
-**4. Expose the deployment (Create a Service):**
-
-```bash
-kubectl expose deployment gamerank-deploy --type=NodePort --port=8000
-```
-
-**5. Apply the Ingress configuration:**
-Create a file named `gamerank-ingress.yaml` with the following content (using `nip.io` for automatic local DNS resolution):
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: gamerank-ingress
-  namespace: gamerank-ns
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: gamerank.127.0.0.1.nip.io
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: gamerank-deploy
-                port:
-                  number: 8000
-```
-
-Apply it to the cluster:
-
-```bash
-kubectl apply -f gamerank-ingress.yaml
-```
-
-**6. Start the Minikube Tunnel (Required for macOS/Docker Desktop):**
-Open a **new terminal tab** and run the following command. Leave it running in the background (it might ask for your admin password to bind to port 80):
-
-```bash
-minikube tunnel
-```
-
-**7. Access the application:** Open your web browser and navigate to:  
-👉 **[http://gamerank.127.0.0.1.nip.io](http://gamerank.127.0.0.1.nip.io)**
-
-_(Note: The Django `settings.py` is already configured to accept this `nip.io` host in the `ALLOWED_HOSTS` array in the `1.0.4` Docker image)._
-
-**8. Create a Superuser in Kubernetes (Optional):**
-If you need to create a new superuser directly inside the running Kubernetes cluster, you can execute Django commands inside the pod:
-
-```bash
-# First, find the exact name of your running pod
-kubectl get pods -n gamerank-ns
-
-# Then, execute the createsuperuser command inside that pod (replace <pod-name> by the actual pod running name)
-kubectl exec -it <pod-name> -n gamerank-ns -- python manage.py createsuperuser
-```
-
-_(Note: Because SQLite is being used inside the container without a Persistent Volume, any changes made to the database, including new users, will be lost if the pod restarts)._
-
----
-
-## ⚙️ CI/CD — Automated Deployment via GitHub Actions
-
-This project includes a GitHub Actions workflow (`.github/workflows/minikube.yml`) that **automatically builds and deploys the app to a local Minikube cluster** on every push or pull request to `main`. It can also be triggered manually via `workflow_dispatch`.
-
-The workflow runs on a **self-hosted runner** and is **fully cross-platform**: it supports **macOS, Linux, and Windows** runners with automatic OS detection.
-
----
-
-### 🔄 Workflow Steps Summary
-
-| Step                                         | Description                                                                    |
-| -------------------------------------------- | ------------------------------------------------------------------------------ |
-| **Checkout code**                            | Clones the repository (no submodules, preserves runner logs)                   |
-| **Install Git for Windows** _(Windows only)_ | Auto-installs Git for Windows via `winget` or `chocolatey` if missing          |
-| **Start Docker & Minikube**                  | Opens Docker Desktop (macOS only) and starts Minikube if not running           |
-| **GameRank Namespace**                       | Creates `gamerank-ns` namespace idempotently and sets it as default context    |
-| **Build Docker Image**                       | Builds the app image: `nowelito28/gamerank:latest`                             |
-| **Load Image into Minikube**                 | Loads the local image directly into Minikube's internal registry               |
-| **Enable Ingress Addon**                     | Enables the Nginx Ingress addon in Minikube (idempotent)                       |
-| **Deploy to Minikube**                       | Applies `deployment.yaml`, `service.yaml`, and `ingress.yaml`                  |
-| **Start Minikube Tunnel** _(macOS / Linux)_  | Starts tunnel in background via `sudo` using secret `PASS`                     |
-| **Start Minikube Tunnel** _(Windows)_        | Starts tunnel in background via `gsudo` (auto-installed) using secret `W_PASS` |
-| **Validation**                               | Waits dynamically for the deployment to be ready, then prints cluster state    |
-| **Show App URL**                             | Prints the final access URL: `http://gamerank.127.0.0.1.nip.io`                |
-
----
+- Docker Desktop
+- PowerShell (`pwsh`)
+- `winget` or Chocolatey available if the workflow needs to install missing tools
+- GitHub Actions runner registered with labels `self-hosted` and `gamerank-runner`
+- repository secret: `W_PASS`
 
 ### 🔐 Required GitHub Secrets
 
-Go to your repository → **Settings → Secrets and variables → Actions → New repository secret** and add:
+Create these repository secrets in `Settings -> Secrets and variables -> Actions`:
 
-| Secret   | Used on       | Description                                                      |
-| -------- | ------------- | ---------------------------------------------------------------- |
-| `PASS`   | macOS & Linux | Local sudo/admin password of the self-hosted runner machine      |
-| `W_PASS` | Windows       | Windows Administrator password of the self-hosted runner machine |
+| Secret   | Used on      | Description                                                            |
+| -------- | ------------ | ---------------------------------------------------------------------- |
+| `PASS`   | macOS, Linux | Local admin/sudo password used to start the Minikube tunnel            |
+| `W_PASS` | Windows      | Windows administrator password used by `gsudo` for the Minikube tunnel |
 
-> The Minikube tunnel needs admin/root privileges to bind to port 80. GitHub Actions **automatically masks** these values in all logs.
+### 🤖 Self-Hosted Runner Setup
 
----
+The workflow uses:
 
-### 🖥️ Prerequisites by Operating System
+```yaml
+runs-on: [self-hosted, gamerank-runner]
+```
 
-#### 🍎 macOS
+This means the runner must:
 
-| Requirement                                                       | Notes                                                 |
-| ----------------------------------------------------------------- | ----------------------------------------------------- |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | The workflow opens it automatically if closed         |
-| [Minikube](https://minikube.sigs.k8s.io/docs/start/)              | Started automatically if not already running          |
-| [kubectl](https://kubernetes.io/docs/tasks/tools/)                | For applying K8s manifests and querying cluster state |
-| Self-hosted GitHub Actions runner                                 | Register with label `self-hosted`                     |
-| GitHub secret `PASS`                                              | Your macOS sudo password                              |
+- be registered as a self-hosted runner for the repository
+- have the custom label `gamerank-runner`
+- ideally be a single dedicated machine, so the `ci` and `cd` jobs share the same local Docker and Minikube state
 
-#### 🐧 Linux
+Basic setup path in GitHub:
 
-| Requirement                                          | Notes                                                 |
-| ---------------------------------------------------- | ----------------------------------------------------- |
-| Docker (daemon active as a service)                  | Must be running before the workflow starts            |
-| [Minikube](https://minikube.sigs.k8s.io/docs/start/) | Started automatically if not already running          |
-| [kubectl](https://kubernetes.io/docs/tasks/tools/)   | For applying K8s manifests and querying cluster state |
-| Self-hosted GitHub Actions runner                    | Register with label `self-hosted`                     |
-| GitHub secret `PASS`                                 | Your Linux sudo password                              |
+1. Open `Settings -> Actions -> Runners -> New self-hosted runner`.
+2. Choose your operating system in GitHub and copy the commands shown there.
+3. Install and register the runner on the target machine.
+4. Start the runner and verify it appears as `Idle`.
+5. Add the custom label `gamerank-runner` to that runner.
 
-#### 🪟 Windows
-
-| Requirement                                          | Notes                                                                                           |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Docker Desktop                                       | Must be running before the workflow starts                                                      |
-| [Minikube](https://minikube.sigs.k8s.io/docs/start/) | Started automatically if not already running                                                    |
-| [kubectl](https://kubernetes.io/docs/tasks/tools/)   | For applying K8s manifests and querying cluster state                                           |
-| [Git for Windows](https://git-scm.com/download/win)  | **Auto-installed** via `winget` or `choco` if not present                                       |
-| `winget` or [Chocolatey](https://chocolatey.org/)    | Required to auto-install Git and `gsudo`. `winget` is built-in on Windows 10 21H2+              |
-| [`gsudo`](https://github.com/gerardog/gsudo)         | **Auto-installed** — equivalent of Unix `sudo` for Windows, accepts passwords non-interactively |
-| Self-hosted GitHub Actions runner                    | Register with label `self-hosted`                                                               |
-| GitHub secret `W_PASS`                               | Your Windows Administrator password                                                             |
-
----
-
-### 🤖 Setting Up the Self-Hosted GitHub Actions Runner
-
-This workflow uses `runs-on: self-hosted`, which means **GitHub will NOT use its own cloud servers** — instead it will look for a runner program installed and running on your local machine.
-
-> ⚠️ **This is a one-time manual setup per machine.** The runner cannot install itself automatically (it must exist before any workflow can run).
-
-**1. Go to your repository on GitHub and navigate to:**
-`Settings → Actions → Runners → New self-hosted runner`
-
-**2. Select your OS and follow the commands shown. Here is a summary:**
-
-#### 🍎 macOS / 🐧 Linux
+Mini guide:
 
 ```bash
-# Create a directory for the runner
+# Create a folder for the runner and enter it
 mkdir actions-runner && cd actions-runner
 
-# Download the runner package (replace the URL with the one GitHub shows you)
-curl -o actions-runner-osx-x64.tar.gz -L https://github.com/actions/runner/releases/download/vX.X.X/actions-runner-osx-x64-X.X.X.tar.gz
-
+# Download the runner package using the URL provided by GitHub
 # Extract it
-tar xzf ./actions-runner-osx-x64.tar.gz
+# Run the configuration command shown by GitHub:
+# ./config.sh --url https://github.com/<owner>/<repo> --token <token>
 
-# Configure it (use the token and URL that GitHub gives you in the UI)
-./config.sh --url https://github.com/YOUR_USER/YOUR_REPO --token YOUR_TOKEN
-
-# Run to link runner to GitHub cloud account (keep this terminal open, or install it as a service below)
+# Start the runner
 ./run.sh
 ```
 
-To run it **as a background service** (so it survives reboots):
+On Windows, GitHub provides the equivalent `config.cmd` and `run.cmd` commands in PowerShell.
 
-```bash
-# Install and start as a service (macOS/Linux)
-sudo ./svc.sh install
-sudo ./svc.sh start
-```
+### ⚙️ Current CI/CD Flow
 
-#### 🪟 Windows (PowerShell as Administrator)
+The active workflow is:
 
-```powershell
-# Create a directory for the runner
-mkdir actions-runner; cd actions-runner
+- `.github/workflows/deploy_helm.yml`
 
-# Download the runner package (replace the URL with the one GitHub shows you)
-Invoke-WebRequest -Uri https://github.com/actions/runner/releases/download/vX.X.X/actions-runner-win-x64-X.X.X.zip -OutFile actions-runner-win-x64.zip
+It is triggered on:
 
-# Extract it
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::ExtractToDirectory("$PWD/actions-runner-win-x64.zip", "$PWD")
+- `push` to `main`
+- `workflow_dispatch`
 
-# Configure it (use the token and URL from GitHub)
-./config.cmd --url https://github.com/YOUR_USER/YOUR_REPO --token YOUR_TOKEN
+The pipeline is split into two jobs:
 
-# Start the runner
-./run.cmd
-```
+#### `ci`
 
-To run it **as a Windows service** (so it survives reboots):
+- checks that Docker and Minikube are available
+- installs missing helper tools when needed depending on the OS
+- starts Docker and Minikube if they are not already running
+- builds the image `nowelito28/gamerank:latest`
+- loads that image into the local Minikube image cache
 
-```powershell
-./svc.ps1 install
-./svc.ps1 start
-```
+#### `cd`
 
-**3. Verify the runner is online:**  
-Go to `Settings → Actions → Runners` in your repository — the runner should appear with a green ✅ `Idle` status. Once it's idle, GitHub will send jobs to it automatically when you push to `main`.
+- checks or installs `kubectl`, `helm`, and OS-specific helper tools
+- starts Docker and Minikube again if needed
+- verifies Kubernetes cluster connectivity
+- creates or reuses the namespace `gamerank-ns`
+- enables the Minikube NGINX Ingress addon
+- validates the Helm chart
+- renders the Helm templates
+- starts `minikube tunnel`
+- deploys the Helm release into `gamerank-ns`
+- validates rollout status and prints the final URL
 
----
+### 🛠️ Running the Deployment Successfully
 
-### 🌐 Accessing the App After the Workflow Completes
+To make the automated deployment work reliably:
 
-Once the workflow finishes successfully, the app is available at:
+1. Prepare one self-hosted machine with Docker, Minikube, and the `gamerank-runner` label.
+2. Make sure Docker can start correctly on that machine.
+3. Make sure `minikube start` works manually before relying on the workflow.
+4. Add the required repository secrets: `PASS` for macOS/Linux or `W_PASS` for Windows.
+5. Push to `main` or launch the workflow manually from the Actions tab.
+
+### 🌐 Resulting Local URL
+
+If the workflow finishes successfully, the app is exposed through the Minikube ingress at:
 
 👉 **[http://gamerank.127.0.0.1.nip.io](http://gamerank.127.0.0.1.nip.io)**
 
-The `nip.io` domain automatically resolves to `127.0.0.1` (localhost) — no manual `/etc/hosts` editing needed. The Minikube tunnel bridges that traffic into the cluster through the Nginx Ingress controller.
+The `nip.io` hostname resolves automatically to `127.0.0.1`, so no manual `/etc/hosts` changes are needed.
+
+### ⚠️ Operational Notes
+
+- This deployment is local to the self-hosted runner machine.
+- The workflow currently uses the mutable Docker tag `latest`.
+- The `ci` and `cd` jobs share local Docker and Minikube state, so they are intended to run on the same dedicated runner.
+- SQLite is still used inside the container, so pod recreation may discard runtime data if no persistent volume is configured.
+- Creating users directly inside the running pod is possible, but those changes follow the same SQLite persistence limitations.
 
 ---
