@@ -3,8 +3,6 @@ name: Deploy to Local Minikube with Helm Chart
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   fork:
   workflow_dispatch:
 
@@ -12,8 +10,9 @@ jobs:
   ci:
     # Build phase (Continuous Integration): prepare the environment, build the Docker image and load it into Minikube
 
-    # Run in any local server regardless of the OS:
-    runs-on: self-hosted
+    # Run only on the dedicated self-hosted runner labeled "gamerank-runner"
+    # This label should exist on a single prepared machine, so CI and CD share the same local Docker/Minikube state
+    runs-on: [self-hosted, gamerank-runner]
 
     # We use bash for all steps (macOS, Linux and Windows with Git Bash installed)
     # Requirement on Windows: have Git for Windows -> https://git-scm.com/download/win
@@ -146,16 +145,52 @@ jobs:
             exit 1
           }
 
-
       - name: Start Docker and Minikube
         run: |
-          # On macOS, open Docker Desktop if it is not already running
+          # Start Docker depending on the operating system
           if [ "$RUNNER_OS" = "macOS" ]; then
-            open -a Docker
+            open -a Docker || true
+
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            sudo systemctl start docker || true
+
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            pwsh -Command '
+              $dockerDesktopPaths = @(
+                "C:\Program Files\Docker\Docker\Docker Desktop.exe",
+                "C:\Program Files\Docker\Docker\Docker Desktop"
+              )
+
+              $started = $false
+              foreach ($path in $dockerDesktopPaths) {
+                if (Test-Path $path) {
+                  Start-Process -FilePath $path
+                  $started = $true
+                  break
+                }
+              }
+
+              if (-not $started) {
+                Write-Host "Docker Desktop executable was not found in the standard paths."
+              }
+            '
           fi
 
-          # Wait until Docker is ready
-          while ! docker system info > /dev/null 2>&1; do sleep 2; done
+          # Wait until Docker is ready, but fail if it never starts
+          ready=0
+          for i in $(seq 1 60); do
+            if docker system info > /dev/null 2>&1; then
+              echo "Docker is ready."
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            echo "Docker is installed but not running on this $RUNNER_OS runner."
+            exit 1
+          fi
 
           # Start Minikube if it is not already running
           minikube status || minikube start
@@ -163,11 +198,12 @@ jobs:
       - name: Build Docker Image
         run: |
           # Build the application image from the repository Dockerfile
+          # Note: this workflow still uses the mutable tag "latest", so it depends on the dedicated runner's local state
           docker build -t nowelito28/gamerank:latest .
 
       - name: Load Image into Minikube
         run: |
-          # Load the locally built image into the Minikube image cache
+          # Load the locally built image into the Minikube image cache of the self-hosted runner
           minikube image load nowelito28/gamerank:latest
 
           # Show the images currently available inside Minikube
@@ -175,7 +211,9 @@ jobs:
 
   cd:
     # Deployment phase (Continuous Deployment): prepare Helm/Kubernetes tooling, deploy the chart and validate the release
-    runs-on: self-hosted
+
+    # Run in any local server regardless of the OS that also has the label gamerank-runner:
+    runs-on: [self-hosted, gamerank-runner]
     needs: ci
 
     defaults:
@@ -376,7 +414,63 @@ jobs:
             }
             Write-Host "gsudo installed successfully."
           }
-            
+
+      - name: Start Docker and Minikube
+        run: |
+          # Start Docker and Minikube for the deployment job if they are not already running
+
+          # Start Docker depending on the operating system
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            open -a Docker || true
+
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            sudo systemctl start docker || true
+
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            pwsh -Command '
+              $dockerDesktopPaths = @(
+                "C:\Program Files\Docker\Docker\Docker Desktop.exe",
+                "C:\Program Files\Docker\Docker\Docker Desktop"
+              )
+
+              $started = $false
+              foreach ($path in $dockerDesktopPaths) {
+                if (Test-Path $path) {
+                  Start-Process -FilePath $path
+                  $started = $true
+                  break
+                }
+              }
+
+              if (-not $started) {
+                Write-Host "Docker Desktop executable was not found in the standard paths."
+              }
+            '
+          fi
+
+          # Wait until Docker is ready, but fail if it never starts
+          ready=0
+          for i in $(seq 1 60); do
+            if docker system info > /dev/null 2>&1; then
+              echo "Docker is ready."
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            echo "Docker is installed but not running on this $RUNNER_OS runner."
+            exit 1
+          fi
+
+          # Start Minikube if it is not already running
+          minikube status || minikube start
+
+      - name: Check Cluster Connectivity
+        run: |
+          kubectl cluster-info
+
       - name: Create and Select Namespace
         run: |
           # Create the target namespace if it does not already exist
