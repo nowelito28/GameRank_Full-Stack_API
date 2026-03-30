@@ -483,6 +483,20 @@ jobs:
         run: |
           # Enable the Minikube NGINX Ingress controller
           minikube addons enable ingress || true
+      
+      - name: Wait for Ingress NGINX Controller
+        run: |
+          # Wait until the ingress-nginx controller Deployment is available
+          kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=180s
+
+          # Wait until the admission webhook patch job has completed
+          kubectl wait --for=condition=complete job/ingress-nginx-admission-create -n ingress-nginx --timeout=180s || true
+          kubectl wait --for=condition=complete job/ingress-nginx-admission-patch -n ingress-nginx --timeout=180s || true
+
+          # Show ingress-nginx resources for debugging if needed
+          kubectl get pods -n ingress-nginx
+          kubectl get svc -n ingress-nginx
+          kubectl get svc ingress-nginx-controller-admission -n ingress-nginx
 
       - name: Lint Helm Chart
         run: |
