@@ -1,10 +1,5 @@
 name: Deploy to Local Minikube
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  fork:
   workflow_dispatch:
 jobs:
   deploy:
